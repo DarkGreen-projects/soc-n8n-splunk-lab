@@ -1,0 +1,24 @@
+# Secrets and local lab runtime
+.env
+secrets/
+*.pem
+*.key
+
+# Lab data / logs (never publish)
+data/
+winlogs-inbox/
+alerts-triage-inbox/
+soc-reports/
+n8n-state/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+__pycache__/
+*.pyc
+
+# Docker / local
+docker-compose.override.yml
