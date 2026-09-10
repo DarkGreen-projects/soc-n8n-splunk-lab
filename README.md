@@ -1,10 +1,6 @@
 # SOC n8n + Splunk Lab
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
-Lab che ho messo su sul NUC di casa: log Windows in **Splunk Free**, automazioni in **n8n**, un pezzo di **Ollama** per riassumere gli alert.  
-Federico Parisi — [LinkedIn](https://www.linkedin.com/in/federico-parisi-0491a4212/) · [DarkGreen Projects](https://github.com/DarkGreen-projects)
-
 ---
 
 ## Perché
