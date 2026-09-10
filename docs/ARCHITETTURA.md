@@ -1,15 +1,10 @@
 # Architettura
 
-## Panoramica
+Il lab gira sul NUC Windows con Docker Compose. Splunk tiene i log; n8n fa da “SOAR povero ma onesto”.
 
-Pipeline lab SOC su host Windows (NUC) con Docker Compose:
+I log Event Viewer vengono esportati in JSON. Splunk li legge da `winlogs-inbox` e li mette in `index=main`. La stessa cartella (o un file bridge prodotto da una search via `docker exec`) alimenta il poller n8n: così non dipendo dal REST Splunk, che sul Free rifiuta il login remoto.
 
-1. **Ingest** — Event Log → JSON lines → Splunk `index=main`
-2. **Detection** — n8n poller su Warning+ (bridge o `winlogs-inbox`)
-3. **Triage** — eventi JSON `status=open|closed` → Splunk `index=alerts_triage`
-4. **Enrichment** — webhook Dispatcher IOC → HTML report
-5. **AI** — Ollama genera un breve triage in italiano
-6. **Chiusura** — webhook close allinea i contatori dashboard
+Quando spunta un Warning+, n8n scrive un JSON `open` in `alerts-triage-inbox` (Splunk lo indexa come `alerts_triage`), prova a estrarre IOC dal messaggio, chiama il Dispatcher per il report HTML, e se Ollama è su chiede un riassunto corto in italiano. La chiusura è un altro evento JSON (`closed`) via webhook: in Splunk conti con `latest(status)` per `alert_id`.
 
 ## Diagramma
 
@@ -31,41 +26,32 @@ flowchart LR
   Manual[webhook_reputation] --> Dispatcher
 ```
 
-## Vincoli Splunk Free (decisione di design)
+## Limiti Free (e perché restano scritti qui)
 
-| Vincolo | Impatto | Mitigazione lab |
+| Vincolo | Cosa succede | Nel lab |
 | --- | --- | --- |
-| No scheduled alerts native | Non si usa Save As → Alert | n8n Schedule Trigger |
-| No Enterprise Security | Niente Incident Review | Index triage custom |
-| Remote login REST disabilitato | `401` su `/services/...` da n8n | `splunk-warning-export.ps1` via `docker exec` + fallback file |
-| 500 MB/giorno indexed | Quota da monitorare | Ingest tipico lab ~2–5 MB/giorno |
+| No alert schedulate | Save As → Alert non è un’opzione seria | Schedule n8n |
+| No ES / Incident Review | Niente coda incidenti nativa | Index triage custom |
+| Remote login off | REST da n8n → 401 | `splunk-warning-export.ps1` + fallback file |
+| 500 MB/giorno | Quota da tenere d’occhio | Su questo NUC di solito pochi MB/giorno |
 
-Questa sezione è intenzionale nel portfolio: mostra consapevolezza dei limiti di prodotto e capacità di progettare workaround operativi.
+Non è marketing: è il motivo per cui il disegno è fatto così.
 
-## Componenti runtime (esempio `C:\lab`)
+## Cartelle tipiche (`C:\lab`)
 
-| Path | Ruolo |
+| Path | Cosa ci trovi |
 | --- | --- |
-| `data/winlogs-inbox` | JSON esportati (monitor Splunk + fallback n8n) |
-| `data/alerts-triage-inbox` | Eventi triage open/closed |
-| `data/soc-reports` | Report HTML generati |
-| `data/n8n-state` | Dedup `seen-alerts.json` + `warning-plus.jsonl` |
-| `exports/n8n-workflows` | JSON workflow (mirror di `workflows/` in questo repo) |
+| `data/winlogs-inbox` | JSON export (Splunk + fallback n8n) |
+| `data/alerts-triage-inbox` | open/closed del triage |
+| `data/soc-reports` | HTML generati |
+| `data/n8n-state` | `seen-alerts.json`, `warning-plus.jsonl` |
+| `exports/n8n-workflows` | copia locale dei JSON di questo repo |
 
-## Enrichment: free vs stub
+## Enrichment
 
-| Fonte | Modalità |
-| --- | --- |
-| ip-api.com | Live geo/ISP |
-| dns.google | Live resolve A |
-| cve.circl.lu | Live CVE |
-| VirusTotal / Shodan / AbuseIPDB / MISP | Stub esplicito — pronti per API key future |
+Live senza key: ip-api (geo), Google DNS, CIRCL CVE.  
+Stub voluti: VirusTotal, Shodan, AbuseIPDB, MISP — nel report c’è scritto chiaro che sono stub, così non sembri di avere API che non hai.
 
-## Porte tipiche
+## Porte
 
-| Servizio | Porta |
-| --- | --- |
-| Splunk UI | 8000 |
-| Splunk management | 8089 (debug; Free senza remote auth) |
-| n8n | 5678 |
-| Ollama | 11434 |
+Splunk UI `8000`, management `8089` (poco utile in auth da remoto sul Free), n8n `5678`, Ollama `11434`.

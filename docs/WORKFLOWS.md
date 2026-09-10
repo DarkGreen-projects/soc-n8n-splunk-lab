@@ -1,15 +1,16 @@
 # Workflow n8n
 
-Export JSON in [`../workflows/`](../workflows/). Importare con [`../scripts/import-n8n-workflows.ps1`](../scripts/import-n8n-workflows.ps1) (pubblica Dispatcher, Close, Poller e riavvia n8n).
+I JSON stanno in [`../workflows/`](../workflows/). Per caricarli sul lab:
+
+```powershell
+powershell -File .\scripts\import-n8n-workflows.ps1
+```
+
+Lo script importa, pubblica Dispatcher / Close / Poller e riavvia n8n (i webhook si registrano al restart).
 
 ## LAB - TI Dispatcher
 
-- **Trigger:** Webhook GET `/webhook/lab-reputation`
-- **Input:** query `ip` | `domain` | `hash` | `cve`
-- **Output:** HTML (`Content-Type: text/html`)
-- **Logica:** Switch sul tipo IOC → HTTP free API o stub → template report
-
-Esempi:
+Webhook GET `/webhook/lab-reputation`. Guardi i query param (`ip`, `domain`, `hash`, `cve`), fai le chiamate free o metti lo stub, e rispondi con una pagina HTML.
 
 ```text
 http://localhost:5678/webhook/lab-reputation?ip=8.8.8.8
@@ -18,34 +19,21 @@ http://localhost:5678/webhook/lab-reputation?hash=d41d8cd98f00b204e9800998ecf842
 http://localhost:5678/webhook/lab-reputation?cve=CVE-2021-44228
 ```
 
-## LAB - IP / Domain / Hash / CVE Reputation
+## Moduli IP / Domain / Hash / CVE
 
-Moduli autonomi (`Execute Workflow Trigger`) allineati al pattern Security Onion:
-
-- riusabili come sub-workflow
-- stessa logica free/stub del Dispatcher
-- utili per estendere il lab senza toccare il webhook principale
+Stessa logica del Dispatcher, ma come workflow richiamabili a parte (pattern tipo Security Onion). Li tengo così se un giorno collego il Dispatcher ai sub-workflow per ID invece di tenere tutto inline.
 
 ## LAB - Splunk Warning Poller
 
-- **Trigger:** ogni 5 minuti
-- **Detection:**  
-  1. `/data/n8n-state/warning-plus.jsonl` (host: `splunk-warning-export.ps1`)  
-  2. fallback `/data/winlogs/*.json`
-- **Dedup:** hash `Id|TimeCreated|LogName` in `seen-alerts.json`
-- **Azioni:** scrive open triage → chiama Dispatcher → Ollama → salva HTML in `/data/soc-reports`
-
-Livelli Windows (IT/EN): `Avviso`/`Warning`, `Errore`/`Error`, `Critico`/`Critical`.
+Parte ogni 5 minuti. Prima legge `warning-plus.jsonl` (se l’hai generato con `splunk-warning-export.ps1`), altrimenti scorre i JSON in `/data/winlogs`. Filtra Avviso/Errore/Critico (e i nomi EN), evita i duplicati con uno hash su Id+TimeCreated+LogName, apre il triage, chiama il Dispatcher, prova Ollama, scrive l’HTML in `/data/soc-reports`.
 
 ## LAB - Close Alert
 
-- **Trigger:** POST `/webhook/lab-close`
-- **Body:** `{ "alert_id": "...", "owner": "demo" }`
-- **Effetto:** nuovo evento JSON `status=closed` (Splunk aggiorna i contatori `latest(status)`)
+POST `/webhook/lab-close` con `alert_id` (e `owner` se vuoi). Non “aggiorna” il file vecchio: aggiunge un evento `closed`. In Splunk usi `latest(status)` per alert.
 
 ## LAB - Manual Demo Pipeline
 
-Trigger manuale in UI n8n: crea un open sample, chiama Dispatcher, scrive report — utile quando non si vuole attendere lo schedule.
+Bottone Execute in n8n: crea un open finto, chiama il Dispatcher, scrive un report. Comodo quando non vuoi aspettare lo schedule.
 
 ## Rigenerare i JSON
 
@@ -53,4 +41,4 @@ Trigger manuale in UI n8n: crea un open sample, chiama Dispatcher, scrive report
 python .\scripts\generate-n8n-workflows.py
 ```
 
-Lo script scrive anche sotto `C:\lab\exports\n8n-workflows` se presente (lab NUC). Per il solo repo, adattare i path `OUT` / `HUB` nello script.
+Di default lo script punta anche a path del lab NUC (`C:\lab\...`). Se lavori solo da questo clone, sistema `OUT` / `HUB` nello script.

@@ -1,50 +1,27 @@
 # SOC n8n + Splunk Lab
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Focus](https://img.shields.io/badge/Focus-SOC%20Automation-red)]()
-[![Stack](https://img.shields.io/badge/Stack-Splunk%20Free%20%7C%20n8n%20%7C%20Ollama-blue)]()
-[![Portfolio](https://img.shields.io/badge/Portfolio-DarkGreen%20Projects-green)](https://github.com/DarkGreen-projects)
 
-**Lab di automazione SOC end-to-end**: ingest log Windows → **Splunk Free** (SIEM) → **n8n** (orchestration / SOAR) → triage open/closed → enrichment IOC → report HTML → riassunto **Ollama** → chiusura alert.
-
-Creato da **Federico Parisi** ([LinkedIn](https://www.linkedin.com/in/federico-parisi-0491a4212/)) — SOC Analyst con background da sviluppatore.
+Lab che ho messo su sul NUC di casa: log Windows in **Splunk Free**, automazioni in **n8n**, un pezzo di **Ollama** per riassumere gli alert.  
+Federico Parisi — [LinkedIn](https://www.linkedin.com/in/federico-parisi-0491a4212/) · [DarkGreen Projects](https://github.com/DarkGreen-projects)
 
 ---
 
-## Perché esiste questo progetto
+## Perché
 
-Su **Splunk Free** non sono disponibili le alert programmate native, e il **login REST remoto è disabilitato**. In un contesto reale molti team risolvono separando **SIEM** e **SOAR**.
+Uso Splunk Free. Lì le alert schedulate non ci sono, e se n8n prova a chiamare il REST prende un bel `401` (*remote login disabled*).  
+Invece di fingere di avere Enterprise, ho fatto la cosa che faresti anche in azienda con vincoli simili: SIEM da una parte, orchestration dall’altra.
 
-Questo lab rende esplicita quella scelta:
-
-| Limite Splunk Free | Soluzione nel lab |
+| Limite Free | Come l’ho aggirato |
 | --- | --- |
-| Niente Schedule Alert UI | **n8n** schedule + workflow |
-| Niente Incident Review / ES | Index `alerts_triage` (open/closed) |
-| Niente REST auth remoto | Bridge host `splunk-warning-export.ps1` + fallback `winlogs-inbox` |
-| Budget TI a pagamento | Fonti **free** (ip-api, DNS, CIRCL) + **stub** VT/Shodan/AbuseIPDB/MISP |
-
-Il risultato è una demo **funzionante e raccontabile** in colloquio — non solo mock UI.
+| Niente Schedule Alert | Workflow n8n ogni 5 minuti |
+| Niente Incident Review | Index `alerts_triage` con open/closed |
+| REST remoto chiuso | Script host `splunk-warning-export.ps1` (+ fallback sui JSON in `winlogs-inbox`) |
+| Niente budget VT/Shodan | ip-api / DNS / CIRCL live; VT/Shodan/AbuseIPDB/MISP come stub espliciti |
 
 ---
 
-## Cosa fa (funzioni)
-
-| Funzione | Componente | Descrizione |
-| --- | --- | --- |
-| Ingest Windows Event Log | `winlogs-export.ps1` → Splunk | System/Application/Security* in JSON su `index=main` |
-| Detection Warning+ | Poller n8n | Legge eventi Avviso/Errore/Critico (bridge o inbox) |
-| Triage open | JSON → `alerts_triage` | Contatori “non presi in carico” in Splunk |
-| Enrichment IOC | TI Dispatcher | IP / domain / hash / CVE → report HTML |
-| Threat intel free | ip-api, Google DNS, CIRCL | Geo, resolve, CVE senza API key a pagamento |
-| Stub TI enterprise | VT / Shodan / AbuseIPDB / MISP | Messaggio esplicito `provider=stub` (slot upgrade) |
-| AI triage | Ollama | Riassunto in italiano (3–5 bullet) se modello presente |
-| Report caso | `soc-reports/*.html` | Artefatto dimostrabile per portfolio/colloquio |
-| Chiusura alert | Webhook `/webhook/lab-close` | Scrive `status=closed` (allinea dashboard) |
-
----
-
-## Architettura
+## Flusso
 
 ```mermaid
 flowchart LR
@@ -64,110 +41,67 @@ flowchart LR
   Manual[webhook_reputation] --> Dispatcher
 ```
 
-Dettaglio: [docs/ARCHITETTURA.md](docs/ARCHITETTURA.md)
+In pratica: i log finiscono in Splunk *e* in una cartella; n8n pesca i Warning+, apre un triage, arricchisce eventuali IOC, scrive un HTML, chiede un riassunto a Ollama se è su, e lascia chiudere l’alert con un webhook.
+
+Altro dettaglio: [docs/ARCHITETTURA.md](docs/ARCHITETTURA.md)
 
 ---
 
-## Workflow n8n (export JSON)
+## Pezzi principali
 
-| Workflow | Trigger | Ruolo |
-| --- | --- | --- |
-| [LAB - TI Dispatcher](workflows/LAB-TI-Dispatcher.json) | Webhook `lab-reputation` | Route `?ip=` / `?domain=` / `?hash=` / `?cve=` → HTML |
-| [LAB - IP Reputation](workflows/LAB-IP-Reputation.json) | Sub-workflow | Geo ip-api + stub TI |
-| [LAB - Domain Reputation](workflows/LAB-Domain-Reputation.json) | Sub-workflow | Google DNS + stub |
-| [LAB - Hash Reputation](workflows/LAB-Hash-Reputation.json) | Sub-workflow | Validazione hash + stub VT |
-| [LAB - CVE Info](workflows/LAB-CVE-Info.json) | Sub-workflow | CIRCL CVE (no key) |
-| [LAB - Splunk Warning Poller](workflows/LAB-Splunk-Warning-Poller.json) | Schedule 5 min | Detection → triage → enrich → Ollama → report |
-| [LAB - Close Alert](workflows/LAB-Close-Alert.json) | Webhook `lab-close` | Chiude alert |
-| [LAB - Manual Demo Pipeline](workflows/LAB-Manual-Demo-Pipeline.json) | Manuale | Demo senza attendere lo schedule |
-
-Guida: [docs/WORKFLOWS.md](docs/WORKFLOWS.md)
-
-Pattern ispirato a [inthecyber-group/securityonion-n8n-workflows](https://github.com/inthecyber-group/securityonion-n8n-workflows), adattato a Splunk Free + triage + AI.
+- **Export Windows** → JSON in inbox, Splunk li indexa su `main`
+- **Poller n8n** → Warning+ (Avviso/Errore/Critico), dedup, triage `open`
+- **Dispatcher** → `?ip=` / `?domain=` / `?hash=` / `?cve=` e risponde con un report HTML
+- **Close** → POST con `alert_id`, scrive `closed` (i contatori in Splunk seguono)
+- **Report** in `soc-reports/` — utile per vedere che qualcosa è davvero uscito dalla pipeline
 
 ---
 
-## Stack
+## Workflow (JSON)
 
-`Splunk Free` · `n8n` · `Docker Compose` · `PowerShell` · `Ollama` · `Windows Event Log` · `Threat Intelligence` (free/stub)
+Sono in [`workflows/`](workflows/). L’idea del Dispatcher viene da [inthecyber Security Onion + n8n](https://github.com/inthecyber-group/securityonion-n8n-workflows); qui è adattato a Splunk Free e al triage.
 
-Progetti correlati:
+| File | A cosa serve |
+| --- | --- |
+| [LAB-TI-Dispatcher](workflows/LAB-TI-Dispatcher.json) | Webhook reputation → HTML |
+| [LAB-IP / Domain / Hash / CVE](workflows/) | Moduli enrichment (free + stub) |
+| [LAB-Splunk-Warning-Poller](workflows/LAB-Splunk-Warning-Poller.json) | Schedule: detect → triage → enrich → Ollama → report |
+| [LAB-Close-Alert](workflows/LAB-Close-Alert.json) | Webhook di chiusura |
+| [LAB-Manual-Demo-Pipeline](workflows/LAB-Manual-Demo-Pipeline.json) | Prova a mano senza aspettare i 5 minuti |
 
-- [soc-automation-hub](https://github.com/DarkGreen-projects/soc-automation-hub) — demo web SOC (5 moduli) + desktop VT  
-- [Decoder_SIEMjoson](https://github.com/DarkGreen-projects/Decoder_SIEMjoson) — parse SIEM multi-vendor + OSINT  
-- [darkgreen-siem](https://github.com/DarkGreen-projects/darkgreen-siem) — SIEM demo multi-fonte  
+Note operative: [docs/WORKFLOWS.md](docs/WORKFLOWS.md)
 
 ---
 
-## Quick start (runtime sul lab NUC)
+## Avvio (sul lab, tipicamente `C:\lab`)
 
-Il codice di orchestrazione è in questo repo; il **runtime** tipico è un lab Docker su host Windows (es. `C:\lab`).
-
-1. Copiare/adattare i workflow in `workflows/` e gli script in `scripts/`
-2. Avviare stack Splunk + n8n + Ollama
-3. Importare i workflow:
+Questo repo porta workflow e script; lo stack Docker vive sull’host.
 
 ```powershell
 powershell -File .\scripts\import-n8n-workflows.ps1
-```
-
-4. Test end-to-end:
-
-```powershell
 powershell -File .\scripts\demo-soc-pipeline.ps1
-```
-
-5. (Opzionale) bridge Splunk CLI → n8n:
-
-```powershell
+# se vuoi alimentare il poller da una search Splunk via docker exec:
 powershell -File .\scripts\splunk-warning-export.ps1
 ```
 
-Checklist colloquio / screenshot: [docs/DEMO.md](docs/DEMO.md)
+Checklist e cosa aspettarsi: [docs/DEMO.md](docs/DEMO.md)
 
-### Endpoint demo
-
-| URL | Uso |
+| Dove | Cosa |
 | --- | --- |
-| `http://localhost:5678/webhook/lab-reputation?ip=8.8.8.8` | Report HTML IP |
-| `POST /webhook/lab-close` body `{"alert_id":"...","owner":"demo"}` | Chiude alert |
-| `http://localhost:8000` | Splunk UI (`index=alerts_triage`) |
-| `http://localhost:5678` | n8n UI |
+| http://localhost:5678/webhook/lab-reputation?ip=8.8.8.8 | Report IP |
+| `POST /webhook/lab-close` `{"alert_id":"...","owner":"demo"}` | Chiude |
+| http://localhost:8000 | Splunk (`index=alerts_triage`) |
+| http://localhost:5678 | n8n |
+
+Stack: Splunk Free, n8n, Docker, PowerShell, Ollama.
+
+Altri pezzi del portfolio: [soc-automation-hub](https://github.com/DarkGreen-projects/soc-automation-hub), [Decoder_SIEMjoson](https://github.com/DarkGreen-projects/Decoder_SIEMjoson), [darkgreen-siem](https://github.com/DarkGreen-projects/darkgreen-siem).
 
 ---
 
-## Cosa mostrare in colloquio
+## Dati
 
-1. Diagramma SIEM ↔ SOAR e **perché n8n** sul Free  
-2. Report HTML reputation (geo reale + stub TI espliciti)  
-3. File triage open/closed e search Splunk  
-4. Esecuzione `demo-soc-pipeline.ps1`  
-5. (Opzionale) bullet AI da Ollama nel report  
+Niente secret nel repo (c’è solo [`.env.example`](.env.example)). Non committare log Windows veri né report con dati personali.
 
-Messaggio chiave: *so lavorare con vincoli di licenza e progettare automazioni SOC realistici, non solo tutorial Enterprise.*
-
----
-
-## Sicurezza e dati
-
-- Nessun secret in repo (vedi [`.env.example`](.env.example))
-- Esempi e stub: niente chiavi VirusTotal/Shodan/AbuseIPDB obbligatorie
-- Non pubblicare log Windows reali né report con dati produttivi
-
----
-
-## Attribution
-
-Dispatcher / reputation: ispirato a InTheCyber Group — [Automated Threat Intelligence Analysis with n8n and Security Onion](https://github.com/inthecyber-group/securityonion-n8n-workflows).  
-Adattamento lab Splunk Free + triage + Ollama: DarkGreen Projects.
-
----
-
-## Licenza
-
-MIT — vedi [LICENSE](LICENSE).
-
-## Contatti
-
-- GitHub: [@DarkGreen-projects](https://github.com/DarkGreen-projects)  
-- LinkedIn: [federico-parisi-0491a4212](https://www.linkedin.com/in/federico-parisi-0491a4212/)
+MIT — [LICENSE](LICENSE).  
+Contatti: [@DarkGreen-projects](https://github.com/DarkGreen-projects) · [LinkedIn](https://www.linkedin.com/in/federico-parisi-0491a4212/)
