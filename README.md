@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Stack](https://img.shields.io/badge/Splunk%20Free%20%7C%20n8n%20%7C%20Ollama-0A66C2)]()
 
-Laboratorio di **automazione SOC** su infrastruttura domestica (NUC): ingest di log Windows in **Splunk Free**, orchestration con **n8n**, enrichment IOC e supporto al triage con **Ollama**.
+Laboratorio di **automazione SOC** su infrastruttura domestica: ingest di log Windows in **Splunk Free**, orchestration con **n8n**, enrichment IOC e supporto al triage con **Ollama**.
 
 Autore: **Federico Parisi** — SOC Analyst · [LinkedIn](https://www.linkedin.com/in/federico-parisi-0491a4212/) · [DarkGreen Projects](https://github.com/DarkGreen-projects)
 
