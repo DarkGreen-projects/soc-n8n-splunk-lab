@@ -1,6 +1,6 @@
-# Provare la demo
+# Demo
 
-Ti serve lo stack su (Splunk, n8n, eventualmente Ollama con `llama3.2:1b`).
+Prerequisiti: stack lab attivo (Splunk Free, n8n; Ollama opzionale con modello `llama3.2:1b`).
 
 ```powershell
 powershell -File .\scripts\import-n8n-workflows.ps1
@@ -8,13 +8,13 @@ powershell -File .\scripts\demo-soc-pipeline.ps1
 powershell -File .\scripts\splunk-warning-export.ps1
 ```
 
-Se `demo-soc-pipeline` va bene, di solito vedi:
+Risultati attesi da `demo-soc-pipeline.ps1`:
 
-- HTML dal Dispatcher (testo tipo “LAB IP Reputation”)
-- un paio di JSON sample in triage (open + closed)
-- close webhook con `ok: true`
-- un report nuovo in `soc-reports/`
+1. Risposta HTML dal Dispatcher (contenuto “LAB IP Reputation”)
+2. Eventi sample open/closed nella triage inbox
+3. Webhook di chiusura con `ok: true`
+4. Nuovo report in `soc-reports/`
 
-Cose utili da aprire a mano: il webhook `?ip=8.8.8.8`, la cartella report, n8n con i workflow LAB, Splunk su `index=alerts_triage`.
+Verifiche utili: webhook `?ip=8.8.8.8`, cartella report, workflow LAB in n8n, search Splunk su `index=alerts_triage`.
 
-Non mettere in giro password, `.env`, log Security veri o HTML con hostname/account interni.
+Non condividere password, file `.env`, log Security reali o report con dati interni non sanitizzati.

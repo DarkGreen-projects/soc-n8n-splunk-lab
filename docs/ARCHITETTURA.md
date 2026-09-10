@@ -1,10 +1,10 @@
 # Architettura
 
-Il lab gira sul NUC Windows con Docker Compose. Splunk tiene i log; n8n fa da “SOAR povero ma onesto”.
+Il laboratorio gira su host Windows (NUC) con Docker Compose. Splunk svolge il ruolo di SIEM; n8n quello di orchestration a fronte dei limiti della licenza Free.
 
-I log Event Viewer vengono esportati in JSON. Splunk li legge da `winlogs-inbox` e li mette in `index=main`. La stessa cartella (o un file bridge prodotto da una search via `docker exec`) alimenta il poller n8n: così non dipendo dal REST Splunk, che sul Free rifiuta il login remoto.
+I Windows Event Log vengono esportati in JSON. Splunk li acquisisce da `winlogs-inbox` e li indexa in `index=main`. La stessa sorgente file (oppure un bridge generato da `splunk search` via `docker exec`) alimenta il poller n8n: in questo modo non si dipende dal REST Splunk, non utilizzabile in autenticazione remota sulla Free.
 
-Quando spunta un Warning+, n8n scrive un JSON `open` in `alerts-triage-inbox` (Splunk lo indexa come `alerts_triage`), prova a estrarre IOC dal messaggio, chiama il Dispatcher per il report HTML, e se Ollama è su chiede un riassunto corto in italiano. La chiusura è un altro evento JSON (`closed`) via webhook: in Splunk conti con `latest(status)` per `alert_id`.
+Alla rilevazione di eventi Warning+, n8n scrive un record `open` in `alerts-triage-inbox` (index Splunk `alerts_triage`), estrae eventuali IOC dal messaggio, invoca il Dispatcher per il report HTML e, se Ollama è disponibile, richiede un riassunto in italiano. La chiusura produce un nuovo evento `closed` via webhook; in Splunk lo stato corrente si ottiene con `latest(status)` per `alert_id`.
 
 ## Diagramma
 
@@ -26,32 +26,37 @@ flowchart LR
   Manual[webhook_reputation] --> Dispatcher
 ```
 
-## Limiti Free (e perché restano scritti qui)
+## Vincoli Splunk Free
 
-| Vincolo | Cosa succede | Nel lab |
+| Vincolo | Impatto | Mitigazione |
 | --- | --- | --- |
-| No alert schedulate | Save As → Alert non è un’opzione seria | Schedule n8n |
-| No ES / Incident Review | Niente coda incidenti nativa | Index triage custom |
-| Remote login off | REST da n8n → 401 | `splunk-warning-export.ps1` + fallback file |
-| 500 MB/giorno | Quota da tenere d’occhio | Su questo NUC di solito pochi MB/giorno |
+| Nessuna alert schedulata nativa | Non si usa Save As → Alert | Schedule Trigger in n8n |
+| Nessun Enterprise Security | Assenza di Incident Review | Index di triage custom |
+| Remote login disabilitato | REST da n8n → 401 | `splunk-warning-export.ps1` e fallback su file |
+| Limite 500 MB/giorno | Quota da monitorare | Ingest tipico di lab nell’ordine di pochi MB/giorno |
 
-Non è marketing: è il motivo per cui il disegno è fatto così.
+Questi vincoli sono documentati di proposito: motivano le scelte di architettura.
 
-## Cartelle tipiche (`C:\lab`)
+## Path runtime (esempio `C:\lab`)
 
-| Path | Cosa ci trovi |
+| Path | Contenuto |
 | --- | --- |
-| `data/winlogs-inbox` | JSON export (Splunk + fallback n8n) |
-| `data/alerts-triage-inbox` | open/closed del triage |
-| `data/soc-reports` | HTML generati |
-| `data/n8n-state` | `seen-alerts.json`, `warning-plus.jsonl` |
-| `exports/n8n-workflows` | copia locale dei JSON di questo repo |
+| `data/winlogs-inbox` | JSON di export (Splunk + fallback n8n) |
+| `data/alerts-triage-inbox` | Eventi triage open/closed |
+| `data/soc-reports` | Report HTML |
+| `data/n8n-state` | Dedup e bridge `warning-plus.jsonl` |
+| `exports/n8n-workflows` | Mirror locale dei workflow di questo repository |
 
 ## Enrichment
 
-Live senza key: ip-api (geo), Google DNS, CIRCL CVE.  
-Stub voluti: VirusTotal, Shodan, AbuseIPDB, MISP — nel report c’è scritto chiaro che sono stub, così non sembri di avere API che non hai.
+Fonti operative senza API key a pagamento: ip-api.com (geo), Google DNS JSON, cve.circl.lu.  
+VirusTotal, Shodan, AbuseIPDB e MISP sono presenti come stub dichiarati, pronti per un’integrazione successiva con credenziali reali.
 
 ## Porte
 
-Splunk UI `8000`, management `8089` (poco utile in auth da remoto sul Free), n8n `5678`, Ollama `11434`.
+| Servizio | Porta |
+| --- | --- |
+| Splunk UI | 8000 |
+| Splunk management | 8089 (non utilizzabile in auth remota su Free) |
+| n8n | 5678 |
+| Ollama | 11434 |
